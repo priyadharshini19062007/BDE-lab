@@ -1,6 +1,4 @@
 import java.io.IOException;
-import java.util.StringTokenizer;
-
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.io.IntWritable;
@@ -11,60 +9,65 @@ import org.apache.hadoop.mapreduce.Reducer;
 import org.apache.hadoop.mapreduce.lib.input.FileInputFormat;
 import org.apache.hadoop.mapreduce.lib.output.FileOutputFormat;
 
-public class WordCount {
+public class WeatherAnalysis {
 
-    public static class TokenizerMapper
+    public static class TempMapper
             extends Mapper<Object, Text, Text, IntWritable> {
 
-        private static final IntWritable ONE = new IntWritable(1);
-        private final Text word = new Text();
+        private Text year = new Text();
+        private IntWritable temperature = new IntWritable();
 
-        @Override
         public void map(Object key, Text value, Context context)
                 throws IOException, InterruptedException {
 
-            StringTokenizer tokenizer =
-                    new StringTokenizer(value.toString());
+            String line = value.toString();
 
-            while (tokenizer.hasMoreTokens()) {
-                word.set(tokenizer.nextToken());
-                context.write(word, ONE);
+            String yearStr = line.substring(0, 4);
+            String tempStr = line.substring(14, 18).trim();
+
+            try {
+                int temp = Integer.parseInt(tempStr);
+
+                year.set(yearStr);
+                temperature.set(temp);
+
+                context.write(year, temperature);
+
+            } catch (NumberFormatException e) {
+                // Ignore invalid temperature lines
             }
         }
     }
 
-    public static class IntSumReducer
+    public static class MaxTempReducer
             extends Reducer<Text, IntWritable, Text, IntWritable> {
 
-        private final IntWritable result = new IntWritable();
+        private IntWritable result = new IntWritable();
 
-        @Override
         public void reduce(Text key, Iterable<IntWritable> values,
-                            Context context)
+                           Context context)
                 throws IOException, InterruptedException {
 
-            int sum = 0;
+            int maxTemp = Integer.MIN_VALUE;
 
-            for (IntWritable value : values) {
-                sum += value.get();
+            for (IntWritable val : values) {
+                maxTemp = Math.max(maxTemp, val.get());
             }
 
-            result.set(sum);
+            result.set(maxTemp);
             context.write(key, result);
         }
     }
 
     public static void main(String[] args) throws Exception {
 
-        Configuration configuration = new Configuration();
+        Configuration conf = new Configuration();
 
-        Job job = Job.getInstance(configuration, "word count");
+        Job job = Job.getInstance(conf, "weather analysis");
 
-        job.setJarByClass(WordCount.class);
-
-        job.setMapperClass(TokenizerMapper.class);
-        job.setCombinerClass(IntSumReducer.class);
-        job.setReducerClass(IntSumReducer.class);
+        job.setJarByClass(WeatherAnalysis.class);
+        job.setMapperClass(TempMapper.class);
+        job.setReducerClass(MaxTempReducer.class);
 
         job.setOutputKeyClass(Text.class);
         job.setOutputValueClass(IntWritable.class);
